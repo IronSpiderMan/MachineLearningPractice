@@ -19,7 +19,7 @@ embedding_model_dict = {
 }
 
 
-def load_documents(directory="books"):
+def load_documents(directory="documents"):
     """
     加载books下的文件，进行拆分
     :param directory:
@@ -32,7 +32,7 @@ def load_documents(directory="books"):
     return split_docs
 
 
-def load_embedding_mode(model_name="ernie-tiny"):
+def load_embedding_model(model_name="ernie-tiny"):
     """
     加载embedding模型
     :param model_name:
@@ -61,7 +61,7 @@ def store_chroma(docs, embeddings, persist_directory="VectorStore"):
 
 
 # 加载embedding模型
-embeddings = load_embedding_mode('text2vec3')
+embeddings = load_embedding_model('text2vec3')
 # 加载数据库
 if not os.path.exists('VectorStore'):
     documents = load_documents()
@@ -70,7 +70,7 @@ else:
     db = Chroma(persist_directory='VectorStore', embedding_function=embeddings)
 # 创建llm
 llm = ChatGLM(
-    endpoint='http://127.0.0.1:8000',
+    endpoint_url='http://127.0.0.1:8000',
     max_token=80000,
     top_p=0.9
 )
@@ -79,7 +79,8 @@ retriever = db.as_retriever()
 qa = RetrievalQA.from_chain_type(
     llm=llm,
     chain_type='stuff',
-    retriever=retriever
+    retriever=retriever,
+    verbose=True
 )
 
 
@@ -95,9 +96,12 @@ def add_file(history, file):
     :param file:
     :return:
     """
+    global qa
     directory = os.path.dirname(file.name)
     documents = load_documents(directory)
-    store_chroma(documents, embeddings)
+    db = store_chroma(documents, embeddings)
+    retriever = db.as_retriever()
+    qa.retriever = retriever
     history = history + [((file.name,), None)]
     return history
 
