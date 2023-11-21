@@ -1,5 +1,6 @@
 import aiohttp
 import asyncio
+from collections import Counter
 from io import BytesIO
 from PIL import Image
 import streamlit as st
@@ -13,18 +14,10 @@ async def chat(prompt):
             return response['choices'][0]['text']
 
 
-def location_to_description(data):
-    """
-    [
-        cls（类别）, x,y（中心坐标）, w,h（宽高）  --- xywh是归一化后的
-    ]
-    :param data:
-    :return:
-    """
-    describe = ""
-    for obj in data:
-        category = obj[0]
-        x, y, w, h = obj[1:]
+def location_to_description(yolo_results):
+    counter = Counter()
+    for category, box in zip(yolo_results[0].boxes.cls.cpu().numpy(), yolo_results[0].boxes.xywhn.cpu().numpy()):
+        x, y, w, h = box
         if x < 0.33 and y < 0.33:
             location = "upper left area"
         elif x > 0.66 and y > 0.66:
@@ -39,8 +32,15 @@ def location_to_description(data):
             location = "top center area"
         else:
             location = "center area"
-        describe += f"There is a {category} located in the {location}.\n"
-    return describe
+        counter.update((f"There is ?? {yolo.model.names[int(category)]} located in the {location}.",))
+    description = ""
+    for obj in counter.most_common():
+        tmp, count = obj
+        if count > 1:
+            tmp = tmp.replace("is", "are")
+        tmp = tmp.replace("??", str(count))
+        description += tmp + "\n"
+    return description
 
 
 prompt = ""
@@ -52,10 +52,6 @@ if not messages:
 yolo = st.session_state.get('yolo')
 if not yolo:
     yolo = YOLO('ultralyticsplus/yolov8s')
-    yolo.overrides['conf'] = 0.25
-    yolo.overrides['iou'] = 0.45
-    yolo.overrides['agnostic_nms'] = False
-    yolo.overrides['max_det'] = 1000
     st.session_state['yolo'] = yolo
 
 # 界面
@@ -64,10 +60,7 @@ if file := st.file_uploader(label="请上传图片"):
     image = Image.open(BytesIO(file.getvalue()))
     st.sidebar.image(image)
     results = yolo.predict(image)
-    data = []
-    for cls, box in zip(results[0].boxes.cls.cpu().numpy(), results[0].boxes.xywhn.cpu().numpy()):
-        data.append([yolo.model.names[cls], *box])
-    description = location_to_description(data)
+    description = location_to_description(results)
     st.sidebar.write(description)
     prompt += (
         "System: You need to answer the questions based on the description of the picture given below."
