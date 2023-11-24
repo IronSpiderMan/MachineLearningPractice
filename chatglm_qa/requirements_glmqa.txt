@@ -1,2 +1,6 @@
-langchain
-gradio
+torch==2.1.0+cu121
+langchain==0.0.319
+sentence-transformers==2.2.2
+chromadb==0.4.14
+nltk==3.8.1
+gradio==3.48.0
