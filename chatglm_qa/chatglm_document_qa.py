@@ -4,6 +4,7 @@ import os
 import gradio as gr
 from langchain.document_loaders import DirectoryLoader
 from langchain.llms import ChatGLM
+from langchain.prompts import PromptTemplate
 from langchain.text_splitter import CharacterTextSplitter
 from langchain.embeddings.huggingface import HuggingFaceEmbeddings
 from langchain.vectorstores import Chroma
@@ -75,12 +76,19 @@ llm = ChatGLM(
     top_p=0.9
 )
 # 创建qa
+QA_CHAIN_PROMPT = PromptTemplate.from_template("""根据下面的上下文（context）内容回答问题。
+如果你不知道答案，就回答不知道，不要试图编造答案。
+答案最多3句话，保持答案简介。
+总是在答案结束时说”谢谢你的提问！“
+{context}
+问题：{question}
+""")
 retriever = db.as_retriever()
 qa = RetrievalQA.from_chain_type(
     llm=llm,
-    chain_type='stuff',
     retriever=retriever,
-    verbose=True
+    verbose=True,
+    chain_type_kwargs={"prompt": QA_CHAIN_PROMPT}
 )
 
 
@@ -116,7 +124,7 @@ def bot(history):
     if isinstance(message, tuple):
         response = "文件上传成功！！"
     else:
-        response = qa.run(message)
+        response = qa({"query": message})['result']
     history[-1][1] = ""
     for character in response:
         history[-1][1] += character
