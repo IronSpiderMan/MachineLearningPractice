@@ -1,30 +1,55 @@
 """
-相关资料：
-    llama-cpp-python文档：https://llama-cpp-python.readthedocs.io/en/latest/
+模型地址：
+    https://modelscope.cn/models/ZhipuAI/chatglm3-6b/summary
+    https://huggingface.co/THUDM/chatglm3-6b
 
-前提：
-    1.安装C++环境
-        https://developer.microsoft.com/en-us/windows/downloads/windows-sdk/
-        勾选“使用C++桌面开发”
-    2.安装模块
-        pip install llama-cpp-python
-        pip install llama-cpp-python[server]
-    3.运行服务
-        python3 -m llama_cpp.server --model “模型路径”
-        # http://localhost:8000/v1
+
 """
 import time
 
 import os
+from typing import Optional, List, Any
+
 import gradio as gr
+from langchain.callbacks.manager import CallbackManagerForLLMRun
 from langchain.document_loaders import DirectoryLoader
-from langchain.llms import ChatGLM
-from langchain.llms.llamacpp import LlamaCpp
 from langchain.prompts import PromptTemplate
 from langchain.text_splitter import CharacterTextSplitter
 from langchain.embeddings.huggingface import HuggingFaceEmbeddings
 from langchain.vectorstores import Chroma
 from langchain.chains import RetrievalQA
+from langchain.llms.base import LLM
+
+from modelscope import AutoTokenizer, AutoModel
+
+
+# from transformers import AutoTokenizer, AutoModel
+
+
+class ChatGLM(LLM):
+    tokenizer: AutoTokenizer = None
+    model: AutoModel = None
+
+    @property
+    def _llm_type(self) -> str:
+        return "ChatGLM3"
+
+    def load_model(self, model_dir):
+        self.tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
+        self.model = AutoModel.from_pretrained(model_dir, trust_remote_code=True).quantize(4).half().cuda().eval()
+
+    def _call(
+            self,
+            prompt: str,
+            stop: Optional[List[str]] = None,
+            run_manager: Optional[CallbackManagerForLLMRun] = None,
+            **kwargs: Any,
+    ) -> str:
+        if stop is not None:
+            raise ValueError("stop kwargs are not permitted.")
+        response, history = self.model.chat(self.tokenizer, prompt, history=[])
+        return response
+
 
 # 加载embedding
 embedding_model_dict = {
@@ -91,20 +116,15 @@ else:
 #     max_token=80000,
 #     top_p=0.9
 # )
-llm = LlamaCpp(
-    model_path=r"G:\models\llama2\llama-2-7b-chat-q4\llama-2-7b-chat.Q4_0.gguf",
-    n_ctx=2048,
-    stop=['Human:']
-)
+llm = ChatGLM()
+llm.load_model(r"C:\Users\86185\.cache\modelscope\hub\ZhipuAI\chatglm3-6b")
 # 创建qa
-QA_CHAIN_PROMPT = PromptTemplate.from_template("""Human:
-根据下面的上下文（context）内容回答问题。
+QA_CHAIN_PROMPT = PromptTemplate.from_template("""根据下面的上下文（context）内容回答问题。
 如果你不知道答案，就回答不知道，不要试图编造答案。
 答案最多3句话，保持答案简介。
 总是在答案结束时说”谢谢你的提问！“
 {context}
 问题：{question}
-Assistant:
 """)
 retriever = db.as_retriever()
 qa = RetrievalQA.from_chain_type(
